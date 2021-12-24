@@ -1,37 +1,18 @@
 package com.epam.cdp.m2.hw2.aggregator;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import javafx.util.Pair;
+
+import java.util.List;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RecursiveTask;
 
 public class Java7ParallelAggregator implements Aggregator {
 
     @Override
     public int sum(List<Integer> numbers) {
-//        // just for example using 2 threads
-//        int numOfThreads = 2;
-//
-//        ExecutorService executorService = Executors.newFixedThreadPool(numOfThreads);
-//        List<Future<Integer>> results = new ArrayList<>();
-//
-//        //dynamic dividing can be implemented with large for+id construction, so
-//        // I decided just to hardcode splitting list into 2 parts
-//        results.add(executorService.submit(new CallableCalculator(numbers.subList(0, numbers.size() / 2))));
-//        results.add(executorService.submit(new CallableCalculator(numbers.subList(numbers.size() / 2, numbers.size()))));
-//
-//        int sum = 0;
-//        for (Future<Integer> future : results) {
-//            try {
-//                sum += future.get();
-//            } catch (InterruptedException | ExecutionException e) {
-//                System.err.println(e.getMessage());
-//            }
-//        }
-//        return sum;
-        throw new UnsupportedOperationException();
+        ForkJoinPool forkJoinPool = ForkJoinPool.commonPool();
+        SumTask sumTask = new SumTask(numbers);
+        return forkJoinPool.invoke(sumTask);
     }
 
     @Override
@@ -44,20 +25,35 @@ public class Java7ParallelAggregator implements Aggregator {
         throw new UnsupportedOperationException();
     }
 
-    protected static class CallableCalculator implements Callable<Integer> {
+    // implementation of Fork/Join Framework
+    public class SumTask extends RecursiveTask<Integer> {
+        private static final int SEQUENTIAL_THRESHOLD = 3;
         private final List<Integer> numbers;
 
-        public CallableCalculator(List<Integer> numbers) {
+        public SumTask(List<Integer> numbers) {
             this.numbers = numbers;
         }
 
-        @Override
-        public Integer call() throws Exception {
+        private int computeSum() {
             int sum = 0;
             for (int num : numbers) {
                 sum += num;
             }
             return sum;
+        }
+
+        @Override
+        protected Integer compute() {
+            if (numbers.size() <= SEQUENTIAL_THRESHOLD) {
+                return computeSum();
+            } else {
+                int middle = numbers.size() / 2;
+                SumTask firstTask = new SumTask(numbers.subList(0, middle));
+                SumTask secondTask = new SumTask(numbers.subList(middle, numbers.size()));
+
+                firstTask.fork();
+                return secondTask.compute() + firstTask.join();
+            }
         }
     }
 }
